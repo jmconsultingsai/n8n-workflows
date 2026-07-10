@@ -1,0 +1,297 @@
+{
+  "id": "ep01-daily-executive-report",
+  "name": "EP1 \u2014 Resumen Ejecutivo Diario con IA",
+  "active": false,
+  "tags": [],
+  "nodes": [
+    {
+      "id": "node-schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-sheets-ventas",
+      "name": "Sheets \u2014 Ventas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [300, 0],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEETS_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Ventas",
+          "mode": "name"
+        },
+        "filtersUI": {},
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "id": "node-sheets-marketing",
+      "name": "Sheets \u2014 Marketing",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [300, 200],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEETS_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Marketing",
+          "mode": "name"
+        },
+        "filtersUI": {},
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "id": "node-sheets-soporte",
+      "name": "Sheets \u2014 Soporte",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [300, 400],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEETS_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Soporte",
+          "mode": "name"
+        },
+        "filtersUI": {},
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "id": "node-rss-techcrunch",
+      "name": "RSS \u2014 TechCrunch AI",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [300, 560],
+      "parameters": {
+        "url": "https://techcrunch.com/category/artificial-intelligence/feed/"
+      }
+    },
+    {
+      "id": "node-rss-theverge",
+      "name": "RSS \u2014 The Verge AI",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [300, 680],
+      "parameters": {
+        "url": "https://theverge.com/rss/ai-artificial-intelligence/index.xml"
+      }
+    },
+    {
+      "id": "node-merge",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [600, 300],
+      "parameters": {
+        "mode": "append",
+        "numberOfInputs": 5
+      }
+    },
+    {
+      "id": "node-code-build-prompt",
+      "name": "Code \u2014 Build Brief Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "parameters": {
+        "jsCode": "// Get data from all sources via the Merge node\nconst items = $input.all();\n\n// Separate data by source — identify by checking fields\nconst ventasRows = items.filter(i => i.json.Pedidos !== undefined || i.json.Ingresos !== undefined);\nconst marketingRows = items.filter(i => i.json.Visitas !== undefined || i.json.ROAS !== undefined);\nconst soporteRows = items.filter(i => i.json.Tickets !== undefined || i.json.Satisfaccion !== undefined);\nconst rssItems = items.filter(i => i.json.title && i.json.link);\n\n// Last row of each sheet = yesterday's data\nconst ventas = ventasRows[ventasRows.length - 1]?.json || {};\nconst marketing = marketingRows[marketingRows.length - 1]?.json || {};\nconst soporte = soporteRows[soporteRows.length - 1]?.json || {};\n\n// Top 5 RSS articles\nconst noticias = rssItems.slice(0, 5).map(i => `- ${i.json.title}`).join('\\n');\n\nconst prompt = `Sos un analista de negocio senior. Tu trabajo es leer los datos de ayer de una tienda e-commerce llamada NovaTrend y generar un brief ejecutivo conciso.\n\nDATOS DE VENTAS:\n- Pedidos: ${ventas.Pedidos || 'N/A'}\n- Ingresos: $${ventas.Ingresos || 'N/A'}\n- Ticket promedio: $${ventas.Ticket_Promedio || 'N/A'}\n- Devoluciones: ${ventas.Devoluciones || 'N/A'}\n- Margen bruto: ${ventas.Margen_Bruto || 'N/A'}%\n\nDATOS DE MARKETING:\n- Visitas: ${marketing.Visitas || 'N/A'}\n- Tasa de conversion: ${marketing.Conversion || 'N/A'}%\n- ROAS: ${marketing.ROAS || 'N/A'}\n- Emails enviados: ${marketing.Emails_Enviados || 'N/A'}\n- Tasa de apertura: ${marketing.Tasa_Apertura || 'N/A'}%\n\nDATOS DE SOPORTE:\n- Tickets abiertos: ${soporte.Tickets || 'N/A'}\n- Tiempo de respuesta promedio: ${soporte.Tiempo_Respuesta || 'N/A'} min\n- Satisfaccion: ${soporte.Satisfaccion || 'N/A'}/5\n- Tickets escalados: ${soporte.Escalados || 'N/A'}\n\nNOTICIAS DE IA RECIENTES:\n${noticias || 'No se encontraron noticias'}\n\nGenera un brief ejecutivo con estas secciones:\n1. RESUMEN (2-3 oraciones del estado general)\n2. ALERTAS (metricas que estan fuera de rango o necesitan atencion)\n3. OPORTUNIDADES (cosas positivas o tendencias para aprovechar)\n4. NOTICIAS RELEVANTES (si alguna noticia de IA impacta al negocio, mencionarla)\n\nFormato: claro, directo, con emojis para scanability. Maximo 300 palabras.`;\n\nreturn [{ json: { prompt } }];"
+      }
+    },
+    {
+      "id": "node-openai-request",
+      "name": "OpenAI \u2014 Generate Brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENAI_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "model": "gpt-4o-mini",
+          "temperature": 0.4,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a senior business analyst."
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "id": "node-code-format-message",
+      "name": "Code \u2014 Format Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 300],
+      "parameters": {
+        "jsCode": "// Extract the AI response from OpenAI\nconst response = $json;\nconst brief = response.choices[0].message.content;\n\nconst today = new Date().toLocaleDateString('es-AR', { \n  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' \n});\n\nconst message = `\ud83d\udcca *Brief Ejecutivo \u2014 NovaTrend*\n\ud83d\udcc5 ${today}\n\n${brief}\n\n_Generado automaticamente por n8n + OpenAI_`;\n\nreturn [{ json: { message } }];"
+      }
+    },
+    {
+      "id": "node-telegram-send",
+      "name": "Telegram \u2014 Send Brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1600, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "chat_id": "YOUR_TELEGRAM_CHAT_ID",
+          "text": "={{ $json.message }}",
+          "parse_mode": "Markdown"
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          { "node": "Sheets \u2014 Ventas", "type": "main", "index": 0 },
+          { "node": "Sheets \u2014 Marketing", "type": "main", "index": 0 },
+          { "node": "Sheets \u2014 Soporte", "type": "main", "index": 0 },
+          { "node": "RSS \u2014 TechCrunch AI", "type": "main", "index": 0 },
+          { "node": "RSS \u2014 The Verge AI", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Sheets \u2014 Ventas": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 0 }]
+      ]
+    },
+    "Sheets \u2014 Marketing": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 1 }]
+      ]
+    },
+    "Sheets \u2014 Soporte": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 2 }]
+      ]
+    },
+    "RSS \u2014 TechCrunch AI": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 3 }]
+      ]
+    },
+    "RSS \u2014 The Verge AI": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 4 }]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [{ "node": "Code \u2014 Build Brief Prompt", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code \u2014 Build Brief Prompt": {
+      "main": [
+        [{ "node": "OpenAI \u2014 Generate Brief", "type": "main", "index": 0 }]
+      ]
+    },
+    "OpenAI \u2014 Generate Brief": {
+      "main": [
+        [{ "node": "Code \u2014 Format Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code \u2014 Format Message": {
+      "main": [
+        [{ "node": "Telegram \u2014 Send Brief", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {}
+}
