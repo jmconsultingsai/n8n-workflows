@@ -1,0 +1,223 @@
+{
+  "id": "ep02-release-notes-ai",
+  "name": "EP2 — Release Notes Automáticas con IA",
+  "active": false,
+  "tags": [],
+  "nodes": [
+    {
+      "id": "node-webhook-trigger",
+      "name": "Webhook — GitHub Release",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "path": "release",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-sheets-changelog",
+      "name": "Sheets — Changelog",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        280,
+        300
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEETS_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Changelog",
+          "mode": "name"
+        },
+        "filtersUI": {},
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "id": "node-code-filter-version",
+      "name": "Code — Filter Latest Version",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Get the version from the webhook trigger payload\nconst webhookData = $('Webhook — GitHub Release').first().json;\nconst targetVersion = webhookData.body?.version || webhookData.version;\n\n// Get all rows from Google Sheets\nconst allRows = $input.all();\n\n// Group rows by version\nconst byVersion = {};\nfor (const row of allRows) {\n  const v = row.json.Version;\n  if (!v) continue;\n  if (!byVersion[v]) byVersion[v] = [];\n  byVersion[v].push(row.json);\n}\n\n// Use the version from the webhook if provided, otherwise pick the most recent\nlet selectedVersion = targetVersion;\nif (!selectedVersion || !byVersion[selectedVersion]) {\n  // Sort versions descending (semver-aware numeric sort)\n  const versions = Object.keys(byVersion).sort((a, b) => {\n    const pa = a.split('.').map(Number);\n    const pb = b.split('.').map(Number);\n    for (let i = 0; i < 3; i++) {\n      if ((pa[i] || 0) !== (pb[i] || 0)) return (pb[i] || 0) - (pa[i] || 0);\n    }\n    return 0;\n  });\n  selectedVersion = versions[0];\n}\n\nconst changes = byVersion[selectedVersion] || [];\n\nif (changes.length === 0) {\n  throw new Error('No changes found for version ' + selectedVersion);\n}\n\nconst releaseDate = changes[0].Fecha || new Date().toISOString().split('T')[0];\n\n// Group by type for a structured prompt\nconst features = changes.filter(c => c.Tipo === 'feature');\nconst improvements = changes.filter(c => c.Tipo === 'improvement');\nconst fixes = changes.filter(c => c.Tipo === 'fix');\n\nconst formatList = (items) =>\n  items.map(c => '  - [' + c.Componente + '] ' + c.Cambio_Tecnico).join('\\n');\n\nconst prompt =\n  'Sos un Product Manager experto en comunicar cambios de software a usuarios no t\\u00e9cnicos.\\n\\n' +\n  'Tu tarea es transformar este changelog t\\u00e9cnico de la versi\\u00f3n ' + selectedVersion + ' de TaskFlow ' +\n  '(una herramienta de gesti\\u00f3n de proyectos) en release notes atractivas y f\\u00e1ciles de entender para usuarios finales.\\n\\n' +\n  'FECHA DE LANZAMIENTO: ' + releaseDate + '\\n' +\n  'VERSI\\u00d3N: ' + selectedVersion + '\\n\\n' +\n  'CHANGELOG T\\u00c9CNICO:\\n\\n' +\n  'NUEVAS FUNCIONALIDADES (' + features.length + '):\\n' + (formatList(features) || '  (ninguna)') + '\\n\\n' +\n  'MEJORAS (' + improvements.length + '):\\n' + (formatList(improvements) || '  (ninguna)') + '\\n\\n' +\n  'CORRECCIONES (' + fixes.length + '):\\n' + (formatList(fixes) || '  (ninguna)') + '\\n\\n' +\n  'INSTRUCCIONES DE TRANSFORMACI\\u00d3N:\\n' +\n  '1. Cada cambio t\\u00e9cnico debe expresarse en lenguaje simple que cualquier usuario entienda\\n' +\n  '2. Enfoc\\u00e1te en el BENEFICIO para el usuario, no en el detalle t\\u00e9cnico\\n' +\n  '3. Agrup\\u00e1 por tipo: \\u2728 Nuevas funcionalidades, \\ud83d\\ude80 Mejoras, \\ud83d\\udc1b Correcciones\\n' +\n  '4. Agrega emojis relevantes en cada punto para hacerlo visual y atractivo\\n' +\n  '5. M\\u00e1ximo 2 oraciones por cambio \\u2014 directo y claro\\n' +\n  '6. Empez\\u00e1 con un t\\u00edtulo llamativo y un intro de 1-2 oraciones resumiendo la versi\\u00f3n\\n' +\n  '7. Cerr\\u00e1 con una frase motivadora de 1 oraci\\u00f3n invitando a actualizar\\n\\n' +\n  'FORMATO FINAL:\\n' +\n  'T\\u00edtulo y intro\\n\\n' +\n  '\\u2728 Nuevas funcionalidades\\n[lista]\\n\\n' +\n  '\\ud83d\\ude80 Mejoras\\n[lista]\\n\\n' +\n  '\\ud83d\\udc1b Correcciones\\n[lista]\\n\\nCierre';\n\nreturn [{ json: { prompt, version: selectedVersion, releaseDate, totalChanges: changes.length } }];"
+      }
+    },
+    {
+      "id": "node-openai-request",
+      "name": "OpenAI — Generate Release Notes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        840,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENAI_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "model": "gpt-4o-mini",
+          "temperature": 0.5,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a product communication expert who writes clear, engaging release notes for end users."
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "id": "node-code-format-telegram",
+      "name": "Code — Format for Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Extract the AI-generated release notes from OpenAI response\nconst openAiResponse = $json;\nconst releaseNotes = openAiResponse.choices[0].message.content;\n\n// Get metadata from the previous Code node\nconst filterNode = $('Code \\u2014 Filter Latest Version').first().json;\nconst version = filterNode.version;\nconst releaseDate = filterNode.releaseDate;\nconst totalChanges = filterNode.totalChanges;\n\nconst message =\n  '\\ud83d\\ude80 *TaskFlow ' + version + ' est\\u00e1 disponible*\\n' +\n  '\\ud83d\\udcc5 ' + releaseDate + ' \\u00b7 ' + totalChanges + ' cambios\\n\\n' +\n  releaseNotes +\n  '\\n\\n_Generado autom\\u00e1ticamente por n8n + OpenAI_';\n\nreturn [{ json: { message, version } }];"
+      }
+    },
+    {
+      "id": "node-telegram-send",
+      "name": "Telegram — Send Release Notes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "chat_id": "YOUR_TELEGRAM_CHAT_ID",
+          "text": "={{ $json.message }}",
+          "parse_mode": "Markdown"
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook — GitHub Release": {
+      "main": [
+        [
+          {
+            "node": "Sheets — Changelog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets — Changelog": {
+      "main": [
+        [
+          {
+            "node": "Code — Filter Latest Version",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code — Filter Latest Version": {
+      "main": [
+        [
+          {
+            "node": "OpenAI — Generate Release Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI — Generate Release Notes": {
+      "main": [
+        [
+          {
+            "node": "Code — Format for Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code — Format for Telegram": {
+      "main": [
+        [
+          {
+            "node": "Telegram — Send Release Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {}
+}
