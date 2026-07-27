@@ -23,7 +23,9 @@ Every workflow ships as a pair: a **fully sanitized JSON** (no credentials, no p
 
 | # | Workflow | What it does | Services used | Video |
 |---|---|---|---|---|
-| — | *Coming soon* | First workflow drops with the next episode | — | — |
+| EP01 | [Daily Executive Report](workflows/ep01-daily-executive-report/) | Reads sales, marketing & support data → AI summary → Telegram | Google Sheets, OpenAI, Telegram | [Watch](https://www.youtube.com/@jmconsultingsai) |
+| EP02 | [AI Release Notes](workflows/ep02-release-notes-ai/) | Webhook receives deploy data → AI generates release notes → Telegram | Webhook, OpenAI, Telegram | [Watch](https://www.youtube.com/@jmconsultingsai) |
+| EP03 | [Pipeline Completo](workflows/ep03-pipeline-completo/) | Full lead gen pipeline: cold email by sector + daily Telegram report + LinkedIn outreach reminders | Google Sheets, Gmail, Telegram | [Watch](https://www.youtube.com/@jmconsultingsai) |
 
 ## Repository structure
 

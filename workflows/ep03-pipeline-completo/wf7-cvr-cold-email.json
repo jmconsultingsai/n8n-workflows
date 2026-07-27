@@ -1,0 +1,107 @@
+{
+  "name": "WF7 — CVR Cold Email Denmark",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "triggerAtHour": 9 }] }
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Schedule — 9AM Daily",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "YOUR_GOOGLE_SHEETS_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "RAW_LEADS", "mode": "name" },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Read RAW_LEADS",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [224, 0],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_CREDENTIAL_ID", "name": "Google Sheets OAuth2" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter: CVR leads with email, not yet emailed\nconst items = $input.all();\nconst filtered = items.filter(item => {\n  const d = item.json;\n  const fuente = (d.Fuente || '').toLowerCase().trim();\n  const email = (d.Email || '').trim();\n  const estado = (d.Estado || '').toLowerCase().trim();\n  return fuente === 'cvr' && email.includes('@') && estado === 'nuevo';\n});\n\n// Limit to 25 per day\nconst limited = filtered.slice(0, 25);\n\nif (limited.length === 0) {\n  // Return empty to stop the workflow gracefully\n  return [];\n}\n\nreturn limited;"
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Filter CVR + Limit 25",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [384, -144]
+    },
+    {
+      "parameters": { "options": { "reset": false } },
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Loop — One at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [784, -208]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Sector detection from Industry (branche) text ──\nconst BRANCHE_MAP = {\n  // revision (accounting)\n  'bogføring og revision': 'revision',\n  'bogføring': 'revision',\n  'revision': 'revision',\n  'skatterådgivning': 'revision',\n  // byggeri (construction)\n  'opførelse af bygninger': 'byggeri',\n  'anlæg af veje': 'byggeri',\n  'anlæg af forsyningsnet': 'byggeri',\n  'nedrivning': 'byggeri',\n  'el-installation': 'byggeri',\n  'vvs-installation': 'byggeri',\n  'bygningsinstallation': 'byggeri',\n  'stukatur': 'byggeri',\n  'tømrer': 'byggeri',\n  'gulvbelægning': 'byggeri',\n  'malervirksomhed': 'byggeri',\n  'færdiggørelse af bygninger': 'byggeri',\n  'tagdækningsarbejder': 'byggeri',\n  'bygge- og anlægsvirksomhed': 'byggeri',\n  // fast_ejendom (real estate)\n  'køb og salg af fast ejendom': 'fast_ejendom',\n  'udlejning af boliger': 'fast_ejendom',\n  'udlejning af erhvervsejendomme': 'fast_ejendom',\n  'ejendomsadministration': 'fast_ejendom',\n  // forsikring (insurance)\n  'livsforsikring': 'forsikring',\n  'skadesforsikring': 'forsikring',\n  'forsikringsmægling': 'forsikring',\n  // rekruttering (recruitment)\n  'vikarbureauer': 'rekruttering',\n  'personaleanskaffelse': 'rekruttering',\n  // skoenhed (wellness)\n  'frisører': 'skoenhed',\n  'skønhedspleje': 'skoenhed',\n  'fysisk velvære': 'skoenhed',\n  // marketing\n  'reklamebureauer': 'marketing',\n  'medieformidling': 'marketing',\n  // advokat (law)\n  'juridisk bistand': 'advokat',\n  // bil (car dealerships)\n  'handel med biler': 'bil',\n  'handel med lastbiler': 'bil',\n  // boligraadgivning (mortgage)\n  'pengeinstitutvirksomhed': 'boligraadgivning',\n  'finansiel leasing': 'boligraadgivning',\n};\n\n// ── Sector configs ──\nconst SECTORS = {\n  revision: {\n    subject: 'Saving 10+ hours/week for accounting firms with AI',\n    industryLabel: 'accounting and bookkeeping firms',\n    context: 'I work with accounting and bookkeeping firms across Denmark. One thing I hear consistently: the team spends more time on repetitive admin than on actual client work.',\n    painPoints: [\n      'Invoice processing and payment follow-ups',\n      'Monthly closing routines and reconciliation',\n      'Client document collection and reminders',\n      'Data entry between systems (ERP, bank, tax)',\n    ],\n  },\n  byggeri: {\n    subject: 'How construction companies cut admin time by 60%',\n    industryLabel: 'construction companies',\n    context: 'I work with construction and trade companies across Denmark. The pattern I see everywhere: the office spends more time on paperwork and coordination than it should — while the field team waits.',\n    painPoints: [\n      'Quote generation and follow-ups',\n      'Scheduling and job coordination',\n      'Invoice processing and payment reminders',\n      'Subcontractor communication and documentation',\n    ],\n  },\n  advokat: {\n    subject: 'Recovering billable hours for law firms with AI',\n    industryLabel: 'law firms',\n    context: 'I work with law firms across Denmark. A pattern I see again and again: associates and paralegals spend hours on admin tasks that pull them away from billable work.',\n    painPoints: [\n      'Client intake and document collection',\n      'Case research summaries and deadline tracking',\n      'Invoice generation and payment follow-ups',\n      'Email triage and client communication routing',\n    ],\n  },\n  fast_ejendom: {\n    subject: 'Automating property management admin — real examples',\n    industryLabel: 'property companies',\n    context: 'I work with real estate and property management companies across Denmark. The biggest inefficiency I see: teams drowning in tenant communication, lease admin, and maintenance coordination.',\n    painPoints: [\n      'Tenant inquiry responses and lead qualification',\n      'Maintenance request routing and follow-ups',\n      'Lease document processing and renewals',\n      'Rent collection reminders and payment tracking',\n    ],\n  },\n  forsikring: {\n    subject: 'How insurance companies automate claims and follow-ups',\n    industryLabel: 'insurance companies',\n    context: 'I work with insurance companies across Denmark. Claims processing and policy admin eat into staff time that should go to client relationships and growth.',\n    painPoints: [\n      'Claims intake and initial processing',\n      'Policy renewal reminders and follow-ups',\n      'Client document collection and verification',\n      'Reporting and compliance documentation',\n    ],\n  },\n  rekruttering: {\n    subject: 'AI automation for recruitment agencies — real examples',\n    industryLabel: 'recruitment agencies',\n    context: 'I work with recruitment agencies across Denmark. Consultants spending more time on admin than actual candidate placement is the pattern I see everywhere.',\n    painPoints: [\n      'CV screening and candidate shortlisting',\n      'Interview scheduling and follow-ups',\n      'Client reporting and pipeline updates',\n      'Job posting distribution and tracking',\n    ],\n  },\n  skoenhed: {\n    subject: 'Automating bookings and follow-ups for wellness companies',\n    industryLabel: 'wellness and beauty companies',\n    context: 'I work with wellness and beauty businesses across Denmark. The front desk overwhelmed with bookings and client communication — sound familiar?',\n    painPoints: [\n      'Appointment booking and rescheduling',\n      'No-show follow-ups and rebooking reminders',\n      'Client review requests and feedback collection',\n      'Inventory tracking and supplier ordering',\n    ],\n  },\n  marketing: {\n    subject: 'How marketing agencies automate client reporting with AI',\n    industryLabel: 'marketing agencies',\n    context: 'I work with marketing agencies across Denmark. Teams spending too much time on reporting and client updates instead of creative work is the number one complaint I hear.',\n    painPoints: [\n      'Client reporting and performance dashboards',\n      'Content scheduling and distribution',\n      'Lead tracking and CRM updates',\n      'Invoice generation and project time tracking',\n    ],\n  },\n  bil: {\n    subject: 'Automating admin for car dealerships — real examples',\n    industryLabel: 'car dealerships',\n    context: 'I work with car dealerships across Denmark. Sales and admin teams buried in lead follow-ups and paperwork — that\\'s the pattern I see everywhere.',\n    painPoints: [\n      'Lead response and follow-up automation',\n      'Test drive scheduling and reminders',\n      'Vehicle inventory updates across platforms',\n      'After-sale service reminders and feedback',\n    ],\n  },\n  boligraadgivning: {\n    subject: 'How mortgage brokers save 10+ hours/week with AI',\n    industryLabel: 'mortgage brokers',\n    context: 'I work with mortgage advisory firms across Denmark. Advisors bogged down in document collection and application processing instead of serving clients — that\\'s the problem we solve.',\n    painPoints: [\n      'Client document collection and status tracking',\n      'Application processing and bank submissions',\n      'Rate comparison updates and client notifications',\n      'Follow-up scheduling and pipeline management',\n    ],\n  },\n};\n\n// ── Detect sector from branche text ──\nfunction detectSector(industry) {\n  const lower = (industry || '').toLowerCase();\n  for (const [keyword, sector] of Object.entries(BRANCHE_MAP)) {\n    if (lower.includes(keyword)) return sector;\n  }\n  return 'revision'; // fallback\n}\n\n// ── Build HTML email ──\nfunction buildEmail(companyName, sector) {\n  const s = SECTORS[sector] || SECTORS.revision;\n  const bullets = s.painPoints.map(p => `      &#x2022; ${p}<br>`).join('\\n');\n\n  return `<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"></head>\n<body style=\"margin:0;padding:0;background-color:#f4f4f7;font-family:Arial,Helvetica,sans-serif;\">\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color:#f4f4f7;\">\n<tr><td align=\"center\" style=\"padding:32px 16px;\">\n<table role=\"presentation\" width=\"560\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color:#ffffff;border-radius:8px;overflow:hidden;max-width:560px;width:100%;\">\n<tr><td style=\"background-color:#1a1a2e;padding:24px 32px;\">\n  <span style=\"color:#ffffff;font-size:18px;font-weight:bold;letter-spacing:0.5px;\">JM Consulting</span>\n  <span style=\"color:#a0a0b0;font-size:13px;float:right;padding-top:3px;\">AI Automation &amp; Growth</span>\n</td></tr>\n<tr><td style=\"padding:32px 32px 24px;\">\n  <p style=\"margin:0 0 20px;font-size:15px;line-height:1.6;color:#333333;\">Hi ${companyName} team,</p>\n  <p style=\"margin:0 0 20px;font-size:15px;line-height:1.6;color:#333333;\">${s.context}</p>\n  <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0 0 24px;\">\n  <tr><td style=\"background-color:#f0f4ff;border-left:4px solid #3366cc;padding:16px 20px;border-radius:0 6px 6px 0;\">\n    <p style=\"margin:0 0 8px;font-size:14px;font-weight:bold;color:#1a1a2e;\">Common time drains we automate:</p>\n    <p style=\"margin:0;font-size:14px;line-height:1.8;color:#444444;\">\n${bullets}\n    </p>\n  </td></tr></table>\n  <p style=\"margin:0 0 20px;font-size:15px;line-height:1.6;color:#333333;\">We typically help firms save <strong>5-10 hours per week</strong> by automating these workflows with AI — not a chatbot, but actual process automation that runs in the background.</p>\n  <p style=\"margin:0 0 24px;font-size:15px;line-height:1.6;color:#333333;\">I'd like to offer a <strong>free 30-minute video call</strong> where I show you 2-3 real examples relevant to ${s.industryLabel}. No pitch, no commitment — just practical examples you can evaluate.</p>\n  <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0 auto 28px;\">\n  <tr><td align=\"center\" style=\"background-color:#3366cc;border-radius:6px;\">\n    <a href=\"https://calendly.com/jmconsultingsai/30min\" target=\"_blank\" style=\"display:inline-block;padding:14px 32px;color:#ffffff;font-size:15px;font-weight:bold;text-decoration:none;letter-spacing:0.3px;\">Book a Free 30-Min Call</a>\n  </td></tr></table>\n  <p style=\"margin:0 0 4px;font-size:15px;color:#333333;\">Best regards,</p>\n  <p style=\"margin:0;font-size:15px;color:#333333;font-weight:bold;\">Javier Martinez</p>\n  <p style=\"margin:0;font-size:13px;color:#888888;\">Founder, JM Consulting</p>\n  <p style=\"margin:0;font-size:13px;color:#888888;\">+45 71 37 84 59</p>\n</td></tr>\n<tr><td style=\"background-color:#f9f9fb;padding:20px 32px;border-top:1px solid #e8e8ee;\">\n  <p style=\"margin:0 0 6px;font-size:12px;color:#999999;text-align:center;\">JM Consulting &middot; Copenhagen, Denmark</p>\n  <p style=\"margin:0;font-size:12px;color:#999999;text-align:center;\">You received this because your company is listed in the Danish CVR registry.<br>\n    <a href=\"mailto:jmconsultingsai@gmail.com?subject=Unsubscribe&body=Please%20remove%20me%20from%20your%20mailing%20list.%20Company:%20${encodeURIComponent(companyName)}\" style=\"color:#3366cc;text-decoration:underline;\">Unsubscribe</a>\n  </p>\n</td></tr>\n</table>\n</td></tr></table>\n</body></html>`;\n}\n\n// ── Process current item ──\nconst item = $input.first();\nconst empresa = (item.json.Empresa || '').trim();\nconst email = (item.json.Email || '').trim();\nconst industry = (item.json.Industry || '').trim();\n\nconst sector = detectSector(industry);\nconst config = SECTORS[sector] || SECTORS.revision;\nconst html = buildEmail(empresa, sector);\n\nreturn [{\n  json: {\n    ...item.json,\n    _sector: sector,\n    _subject: config.subject,\n    _htmlBody: html,\n    _to: email,\n    _empresa: empresa,\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "Build Email — Template by Sector",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1072, -224]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json._to }}",
+        "subject": "={{ $json._subject }}",
+        "message": "={{ $json._htmlBody }}",
+        "options": { "appendAttribution": false, "senderName": "Javier Martinez — JM Consulting", "replyTo": "jmconsultingsai@gmail.com" }
+      },
+      "id": "a1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Gmail — Send",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1280, -224],
+      "credentials": { "gmailOAuth2": { "id": "YOUR_CREDENTIAL_ID", "name": "Gmail OAuth2" } }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "YOUR_GOOGLE_SHEETS_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "RAW_LEADS", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": { "Email": "={{ $json._to }}", "Estado": "emailed" }
+        },
+        "options": { "cellFormat": "USER_ENTERED" }
+      },
+      "id": "a1b2c3d4-0008-4000-8000-000000000008",
+      "name": "Update Estado → emailed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1504, -208],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_CREDENTIAL_ID", "name": "Google Sheets OAuth2" } }
+    },
+    {
+      "parameters": { "amount": 50 },
+      "id": "a1b2c3d4-0009-4000-8000-000000000009",
+      "name": "Wait 50s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1744, -192]
+    }
+  ],
+  "connections": {
+    "Schedule — 9AM Daily": { "main": [[{ "node": "Read RAW_LEADS", "type": "main", "index": 0 }]] },
+    "Read RAW_LEADS": { "main": [[{ "node": "Filter CVR + Limit 25", "type": "main", "index": 0 }]] },
+    "Filter CVR + Limit 25": { "main": [[{ "node": "Loop — One at a Time", "type": "main", "index": 0 }]] },
+    "Loop — One at a Time": { "main": [[{ "node": "Build Email — Template by Sector", "type": "main", "index": 0 }], []] },
+    "Build Email — Template by Sector": { "main": [[{ "node": "Gmail — Send", "type": "main", "index": 0 }]] },
+    "Gmail — Send": { "main": [[{ "node": "Update Estado → emailed", "type": "main", "index": 0 }]] },
+    "Update Estado → emailed": { "main": [[{ "node": "Wait 50s", "type": "main", "index": 0 }]] },
+    "Wait 50s": { "main": [[{ "node": "Loop — One at a Time", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

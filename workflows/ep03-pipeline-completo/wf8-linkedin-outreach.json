@@ -1,0 +1,86 @@
+{
+  "name": "WF8 — LinkedIn Outreach Reminder",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 * * 1,3,5" }] } },
+      "id": "wf8-0001-trigger",
+      "name": "Schedule — Lun/Mié/Vie 9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "YOUR_GOOGLE_SHEETS_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "YOUR_LINKEDIN_SHEET_NAME", "mode": "name" },
+        "options": {}
+      },
+      "id": "wf8-0002-sheets",
+      "name": "Sheets — Leer LinkedIn",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [272, 0],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_CREDENTIAL_ID", "name": "Google Sheets OAuth2" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const leads = $('Sheets — Leer LinkedIn').all();\nconst pending = leads.filter(item => {\n  const estado = (item.json['Estado'] || '').trim().toLowerCase();\n  return !estado;\n});\nfor (let i = pending.length - 1; i > 0; i--) {\n  const j = Math.floor(Math.random() * (i + 1));\n  [pending[i], pending[j]] = [pending[j], pending[i]];\n}\nconst batch = pending.slice(0, 10);\nif (batch.length === 0) {\n  return [{ json: { message: '\\u2705 LinkedIn: todos los leads ya fueron contactados.', leads: [] } }];\n}\nconst clean = (s) => (s || '').replace(/[*_`\\[\\]]/g, '');\nconst today = new Date();\nconst days = ['Dom', 'Lun', 'Mar', 'Mi\\u00e9', 'Jue', 'Vie', 'S\\u00e1b'];\nconst header = `\\ud83d\\udd17 *LinkedIn Outreach \\u2014 ${days[today.getDay()]}*\\n\\ud83d\\udcc5 ${today.toISOString().split('T')[0]}\\n\\ud83d\\udccb ${batch.length} leads para contactar hoy\\n\\n`;\nconst selectedLeads = [];\nconst blocks = [];\nfor (let i = 0; i < batch.length; i++) {\n  const l = batch[i].json;\n  const name = clean(l['Nombre completo'] || 'Sin nombre');\n  const company = clean(l['Empresa actual'] || '');\n  const rawTitle = clean(l['T\\u00edtulo actual'] || '');\n  const title = rawTitle.length > 80 ? rawTitle.substring(0, 77) + '...' : rawTitle;\n  const connectMsg = clean(l['Connect Request Message'] || 'Sin mensaje');\n  const url = (l['LinkedIn URL'] || '').trim();\n  let block = `*${i + 1}. ${name}*`;\n  if (company) block += ` \\u2014 ${company}`;\n  block += '\\n';\n  if (title) block += `   ${title}\\n`;\n  if (url) block += `   ${url}\\n`;\n  block += `   \\ud83d\\udce9 ${connectMsg}\\n\\n`;\n  blocks.push(block);\n  selectedLeads.push({ linkedinUrl: url });\n}\nconst footer = `\\ud83d\\udcca Pendientes: ${pending.length - batch.length} | Total: ${leads.length}`;\nconst messages = [];\nlet current = header;\nfor (const block of blocks) {\n  if (current.length + block.length > 3800) {\n    messages.push(current.trim());\n    current = '';\n  }\n  current += block;\n}\ncurrent += footer;\nmessages.push(current.trim());\nreturn messages.map((msg, i) => ({\n  json: {\n    message: msg,\n    leads: i === messages.length - 1 ? selectedLeads : []\n  }\n}));"
+      },
+      "id": "wf8-0003-code",
+      "name": "Code — Seleccionar 10 Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [528, 0]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "wf8-0004-telegram",
+      "name": "Telegram — LinkedIn Reminder",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [784, 0],
+      "credentials": { "telegramApi": { "id": "YOUR_CREDENTIAL_ID", "name": "Telegram Bot API" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reference the original Code node output, not Telegram's response\nconst allItems = $('Code \\u2014 Seleccionar 10 Leads').all();\nconst allLeads = [];\nfor (const item of allItems) {\n  const leads = item.json.leads || [];\n  allLeads.push(...leads);\n}\nif (allLeads.length === 0) return [];\nreturn allLeads.map(l => ({ json: { 'LinkedIn URL': l.linkedinUrl } }));"
+      },
+      "id": "wf8-0005-extract",
+      "name": "Code — Extraer Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "YOUR_GOOGLE_SHEETS_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "YOUR_LINKEDIN_SHEET_NAME", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": { "LinkedIn URL": "={{ $json['LinkedIn URL'] }}", "Estado": "contactado" },
+          "matchingColumns": ["LinkedIn URL"]
+        },
+        "options": {}
+      },
+      "id": "wf8-0006-update",
+      "name": "Sheets — Marcar Contactado",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1312, 0],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_CREDENTIAL_ID", "name": "Google Sheets OAuth2" } }
+    }
+  ],
+  "connections": {
+    "Schedule — Lun/Mié/Vie 9AM": { "main": [[{ "node": "Sheets — Leer LinkedIn", "type": "main", "index": 0 }]] },
+    "Sheets — Leer LinkedIn": { "main": [[{ "node": "Code — Seleccionar 10 Leads", "type": "main", "index": 0 }]] },
+    "Code — Seleccionar 10 Leads": { "main": [[{ "node": "Telegram — LinkedIn Reminder", "type": "main", "index": 0 }]] },
+    "Telegram — LinkedIn Reminder": { "main": [[{ "node": "Code — Extraer Leads", "type": "main", "index": 0 }]] },
+    "Code — Extraer Leads": { "main": [[{ "node": "Sheets — Marcar Contactado", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

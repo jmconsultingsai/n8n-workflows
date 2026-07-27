@@ -1,0 +1,55 @@
+{
+  "name": "WF4 — Reporte Diario Telegram (CVR)",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "triggerAtHour": 20 }] } },
+      "id": "b6c87a7d-6681-43ea-acad-4a7579b9f60c",
+      "name": "Trigger — 9 PM Diario",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [656, 528]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "YOUR_GOOGLE_SHEETS_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "RAW_LEADS", "mode": "name" },
+        "options": {}
+      },
+      "id": "f9cc1c38-5315-43e7-abb7-4ac2481e1379",
+      "name": "Sheets — Leer RAW_LEADS",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [896, 528],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_CREDENTIAL_ID", "name": "Google Sheets OAuth2" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const leads = $('Sheets — Leer RAW_LEADS').all();\nconst today = new Date();\n\n// --- CVR leads ---\nconst cvr = leads.filter(i => i.json.Fuente === 'cvr');\nconst cvrTotal = cvr.length;\nconst cvrEmail = cvr.filter(i => (i.json.Email || '').includes('@')).length;\nconst cvrNuevo = cvr.filter(i => i.json.Estado === 'nuevo').length;\nconst cvrEmailed = cvr.filter(i => i.json.Estado === 'emailed').length;\n\n// --- By sector (Industry field from CVR branche) ---\nconst sectors = {};\nfor (const lead of cvr) {\n  const raw = (lead.json.Industry || 'sin sector').trim();\n  const sector = raw.length > 30 ? raw.substring(0, 27) + '...' : raw;\n  if (!sectors[sector]) sectors[sector] = { total: 0, email: 0, nuevo: 0, emailed: 0 };\n  sectors[sector].total++;\n  if ((lead.json.Email || '').includes('@')) sectors[sector].email++;\n  if (lead.json.Estado === 'nuevo') sectors[sector].nuevo++;\n  if (lead.json.Estado === 'emailed') sectors[sector].emailed++;\n}\n\nconst sorted = Object.entries(sectors).sort((a, b) => b[1].total - a[1].total);\nlet sectorLines = '';\nfor (const [name, s] of sorted) {\n  sectorLines += `  ${name}: ${s.total} (email ${s.email} | sent ${s.emailed})\\n`;\n}\n\n// --- WF7 Cold Email Stats ---\nconst cvrConEmailNuevo = cvr.filter(i => (i.json.Email || '').includes('@') && i.json.Estado === 'nuevo').length;\nconst emailRate = cvrTotal > 0 ? Math.round(cvrEmail / cvrTotal * 100) : 0;\nconst sendRate = cvrEmail > 0 ? Math.round(cvrEmailed / cvrEmail * 100) : 0;\n\n// Sector breakdown for emailed\nconst emailedBySector = {};\nfor (const lead of cvr) {\n  if (lead.json.Estado !== 'emailed') continue;\n  const raw = (lead.json.Industry || 'sin sector').trim();\n  const sector = raw.length > 25 ? raw.substring(0, 22) + '...' : raw;\n  emailedBySector[sector] = (emailedBySector[sector] || 0) + 1;\n}\nconst emailedSectorLines = Object.entries(emailedBySector)\n  .sort((a, b) => b[1] - a[1])\n  .map(([name, count]) => `  ${name}: ${count} sent`)\n  .join('\\n');\n\n// --- Other sources in RAW_LEADS ---\nconst otherCounts = {};\nfor (const lead of leads) {\n  const src = lead.json.Fuente || 'other';\n  if (src === 'cvr') continue;\n  otherCounts[src] = (otherCounts[src] || 0) + 1;\n}\nconst otherLine = Object.entries(otherCounts).map(([k, v]) => `${k}: ${v}`).join(' | ');\n\n// --- Build Telegram message ---\nlet msg = '\\ud83d\\udcca *Reporte Diario \\u2014 JM Consulting*\\n';\nmsg += `\\ud83d\\udcc5 ${today.toLocaleDateString('es-AR')}\\n\\n`;\n\nmsg += '\\ud83c\\udde9\\ud83c\\uddf0 *CVR Denmark Pipeline*\\n';\nmsg += `Total: ${cvrTotal} leads\\n`;\nmsg += `Con email: ${cvrEmail} (${emailRate}%)\\n`;\nmsg += `Nuevo: ${cvrNuevo} | Emailed: ${cvrEmailed}\\n\\n`;\n\nif (sectorLines) {\n  msg += '\\ud83d\\udccb *Por sector:*\\n' + sectorLines + '\\n';\n}\n\nmsg += '\\ud83d\\udce7 *WF7 Cold Email Stats*\\n';\nmsg += `Enviados total: ${cvrEmailed} (${sendRate}% del pool)\\n`;\nmsg += `Pendientes de envio: ${cvrConEmailNuevo}\\n`;\nif (emailedSectorLines) {\n  msg += 'Por sector:\\n' + emailedSectorLines + '\\n';\n}\nmsg += '\\n';\n\nmsg += `\\ud83d\\udcca *RAW LEADS total: ${leads.length}*\\n`;\nif (otherLine) {\n  msg += `Otras fuentes: ${otherLine}\\n`;\n}\n\nmsg += '\\n\\u2705 Pipeline CVR + Cold Email activos.';\n\nreturn [{ json: { message: msg } }];\n"
+      },
+      "id": "de460898-5750-44ac-9880-065dd22eaf49",
+      "name": "Code — Generar Reporte",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 528]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "61c3ce0a-d6cc-46f1-9bf8-26dfe2813407",
+      "name": "Telegram — Enviar Reporte",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1456, 528],
+      "credentials": { "telegramApi": { "id": "YOUR_CREDENTIAL_ID", "name": "Telegram Bot API" } }
+    }
+  ],
+  "connections": {
+    "Trigger — 9 PM Diario": { "main": [[{ "node": "Sheets — Leer RAW_LEADS", "type": "main", "index": 0 }]] },
+    "Sheets — Leer RAW_LEADS": { "main": [[{ "node": "Code — Generar Reporte", "type": "main", "index": 0 }]] },
+    "Code — Generar Reporte": { "main": [[{ "node": "Telegram — Enviar Reporte", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
