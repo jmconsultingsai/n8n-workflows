@@ -26,6 +26,7 @@ Every workflow ships as a pair: a **fully sanitized JSON** (no credentials, no p
 | EP01 | [Daily Executive Report](workflows/ep01-daily-executive-report/) | Reads sales, marketing & support data → AI summary → Telegram | Google Sheets, OpenAI, Telegram | [Watch](https://www.youtube.com/@jmconsultingsai) |
 | EP02 | [AI Release Notes](workflows/ep02-release-notes-ai/) | Webhook receives deploy data → AI generates release notes → Telegram | Webhook, OpenAI, Telegram | [Watch](https://www.youtube.com/@jmconsultingsai) |
 | EP03 | [Pipeline Completo](workflows/ep03-pipeline-completo/) | Full lead gen pipeline: cold email by sector + daily Telegram report + LinkedIn outreach reminders | Google Sheets, Gmail, Telegram | [Watch](https://www.youtube.com/@jmconsultingsai) |
+| EP03 | [CVR Scraper](workflows/ep03-pipeline-completo/scraper/) | Python scripts that scrape Denmark's public business registry (Datafordeler CVR GraphQL), enrich leads, and sync to Google Sheets. Adaptable to any country's registry via LLM. | Datafordeler API, Google Sheets | [Watch](https://www.youtube.com/@jmconsultingsai) |
 
 ## Repository structure
 

@@ -1,0 +1,20 @@
+# Requirements for EP3 scraper scripts
+# Install with: pip install -r requirements.txt
+
+# HTTP client — used by scrape_cvr.py for all Datafordeler API calls
+requests>=2.31.0
+
+# Load configuration from .env file
+python-dotenv>=1.0.0
+
+# YAML parsing — used by scrape_cvr.py to load sectors.yaml
+pyyaml>=6.0
+
+# Google Sheets API client — used by sync_leads.py
+gspread>=6.0.0
+
+# Google authentication — used by sync_leads.py (service account credentials)
+google-auth>=2.28.0
+
+# Excel file reading — used by sync_leads.py (LinkedIn / Jobindex sources, optional)
+openpyxl>=3.1.0

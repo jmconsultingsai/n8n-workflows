@@ -1,0 +1,105 @@
+# sectors.yaml — Industry sectors for the CVR lead scraper
+#
+# Each entry maps a sector key to:
+#   name:  Human-readable label (shown in logs and CSV output)
+#   codes: List of branchekoder (Danish industry classification codes, NACE-based)
+#
+# WHAT ARE BRANCHEKODER?
+# -----------------------
+# Branchekoder are Denmark's industry classification codes, derived from the EU's
+# NACE Rev. 2 standard. Every registered Danish company is tagged with one or more
+# of these codes in the CVR registry.
+#
+# You can look up codes at:
+#   https://www.dst.dk/da/Statistik/dokumentation/nomenklaturer/DB07
+#   https://datacvr.virk.dk/ (search a company to see its branchekode)
+#
+# ADAPTING TO YOUR COUNTRY
+# -------------------------
+# If you are scraping a different country's business registry:
+#   1. Find the equivalent industry classification system (e.g., SIC codes in the US,
+#      SBI codes in the Netherlands, NAF codes in France, CNAE in Spain/Argentina).
+#   2. Replace the codes below with the relevant codes from that system.
+#   3. Ask Claude (or any LLM) to help: "Give me the [country] industry codes
+#      equivalent to branchekoder [list] for the [sector] sector."
+#
+# ADDING OR REMOVING SECTORS
+# ---------------------------
+# - Add a new block following the same format (key, name, codes list).
+# - Remove a sector by deleting its block.
+# - Run:  python scrape_cvr.py --sector <key>  to scrape a specific sector.
+# - Run:  python scrape_cvr.py                 to scrape all sectors.
+
+byggeri:
+  name: "Byggeri & Anlaeg (Construction)"
+  codes:
+    - "412000"  # Opforelse af bygninger
+    - "421100"  # Anlaeg af veje og motorveje
+    - "422100"  # Anlaeg af forsyningsnet
+    - "431100"  # Nedrivning
+    - "431200"  # Forberedende arbejder pa byggepladser
+    - "432100"  # El-installation
+    - "432200"  # VVS-installation og blikkenslagerarbejde
+    - "432900"  # Anden bygningsinstallation
+    - "433100"  # Stukatur og gipsplattemontage
+    - "433200"  # Tomrer- og bygningssnedkervirksomhed
+    - "433300"  # Gulvbelaegning og vaegbeklaedning
+    - "433400"  # Malervirksomhed og glarmestervirksomhed
+    - "433900"  # Anden faerdiggoerelse af bygninger
+    - "439100"  # Tagdaekningsarbejder
+    - "439900"  # Anden specialiseret bygge- og anlaegsvirksomhed
+
+fast_ejendom:
+  name: "Fast Ejendom (Real Estate)"
+  codes:
+    - "681000"  # Kob og salg af fast ejendom
+    - "682010"  # Udlejning af boliger
+    - "682020"  # Udlejning af erhvervsejendomme
+    - "682030"  # Ejendomsadministration og -formidling
+
+forsikring:
+  name: "Forsikring (Insurance)"
+  codes:
+    - "651100"  # Livsforsikring
+    - "651200"  # Skadesforsikring
+    - "662100"  # Forsikringsmaeglers
+
+rekruttering:
+  name: "Rekruttering (Recruitment)"
+  codes:
+    - "781000"  # Vikarbureauer
+    - "782000"  # Anden personaleanskaffelse
+
+skoenhed:
+  name: "Skoenhedspleje & Wellness (Med Spas)"
+  codes:
+    - "960200"  # Frisoerer og anden skoenhedspleje
+    - "960400"  # Fysisk velvaere (wellness)
+
+marketing:
+  name: "Marketingbureau (Marketing Agencies)"
+  codes:
+    - "731100"  # Reklamebureauer
+    - "731200"  # Medieformidling
+
+advokat:
+  name: "Advokatfirma (Law Firms)"
+  codes:
+    - "691000"  # Juridisk bistand
+
+bil:
+  name: "Bilforhandler (Car Dealerships)"
+  codes:
+    - "451100"  # Handel med biler og lette motorkoretojer
+    - "451200"  # Handel med lastbiler og busser
+
+revision:
+  name: "Revisorer & Regnskab (Accounting)"
+  codes:
+    - "692000"  # Bogfoering, regnskab og revision
+
+boligraadgivning:
+  name: "Boligraadgivning (Mortgage Brokers)"
+  codes:
+    - "641900"  # Anden pengeinstitutvirksomhed
+    - "649100"  # Finansiel leasing
