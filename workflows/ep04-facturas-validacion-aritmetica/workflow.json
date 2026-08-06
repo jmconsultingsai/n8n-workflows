@@ -1,0 +1,608 @@
+{
+  "name": "EP4 — Facturas con IA + Validacion Aritmetica",
+  "nodes": [
+    {
+      "id": "n01",
+      "name": "Drive — Nueva factura",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "{YOUR_GOOGLE_DRIVE_CREDENTIAL_ID}",
+          "name": "{YOUR_GOOGLE_DRIVE_CREDENTIAL_NAME}"
+        }
+      },
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "{YOUR_DRIVE_FOLDER_ID}",
+          "mode": "list",
+          "cachedResultName": "{YOUR_DRIVE_FOLDER_NAME}",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/{YOUR_DRIVE_FOLDER_ID}"
+        },
+        "event": "fileCreated",
+        "options": {}
+      }
+    },
+    {
+      "id": "n02",
+      "name": "Drive — Descargar PDF",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        60,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "{YOUR_GOOGLE_DRIVE_CREDENTIAL_ID}",
+          "name": "{YOUR_GOOGLE_DRIVE_CREDENTIAL_NAME}"
+        }
+      },
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n03",
+      "name": "PDF — Extraer texto",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        280,
+        300
+      ],
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {}
+      }
+    },
+    {
+      "id": "n04",
+      "name": "IF — ¿El PDF tiene texto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c-tiene-texto",
+              "leftValue": "={{ ($json.text || '').trim().length }}",
+              "rightValue": 80,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n05",
+      "name": "IA — Extraer datos",
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1,
+      "position": [
+        760,
+        180
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "text": "={{ $json.text }}",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"numero_factura\": {\n      \"type\": \"string\",\n      \"description\": \"Numero de comprobante tal como figura, ej '0004-00012847' o 'INV-8871'\"\n    },\n    \"emisor\": {\n      \"type\": \"string\",\n      \"description\": \"Razon social de quien emite la factura\"\n    },\n    \"cuit_emisor\": {\n      \"type\": \"string\",\n      \"description\": \"CUIT, VAT, USt-IdNr o identificador fiscal del emisor\"\n    },\n    \"receptor\": {\n      \"type\": \"string\",\n      \"description\": \"Razon social del cliente\"\n    },\n    \"fecha_emision\": {\n      \"type\": \"string\",\n      \"description\": \"Fecha de emision, exactamente como aparece en el documento\"\n    },\n    \"fecha_vencimiento\": {\n      \"type\": \"string\",\n      \"description\": \"Fecha de vencimiento si figura\"\n    },\n    \"moneda\": {\n      \"type\": \"string\",\n      \"description\": \"Codigo ISO de la moneda: ARS, USD, EUR...\"\n    },\n    \"items\": {\n      \"type\": \"array\",\n      \"description\": \"TODOS los items de detalle. Si la tabla sigue en otra pagina, incluir tambien esos.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"descripcion\": {\n            \"type\": \"string\"\n          },\n          \"cantidad\": {\n            \"type\": \"string\",\n            \"description\": \"Cantidad, como texto y sin unidad\"\n          },\n          \"precio_unitario\": {\n            \"type\": \"string\",\n            \"description\": \"Precio unitario, tal cual figura, conservando los separadores del documento\"\n          },\n          \"importe\": {\n            \"type\": \"string\",\n            \"description\": \"Importe de la linea, tal cual figura\"\n          }\n        },\n        \"required\": [\n          \"descripcion\",\n          \"importe\"\n        ]\n      }\n    },\n    \"subtotal\": {\n      \"type\": \"string\",\n      \"description\": \"Subtotal declarado. NO calcularlo: copiar el que figura en el documento.\"\n    },\n    \"impuestos\": {\n      \"type\": \"array\",\n      \"description\": \"Cada impuesto o percepcion por separado\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"concepto\": {\n            \"type\": \"string\"\n          },\n          \"importe\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"concepto\",\n          \"importe\"\n        ]\n      }\n    },\n    \"total\": {\n      \"type\": \"string\",\n      \"description\": \"Total declarado. NO calcularlo: copiar el que figura en el documento.\"\n    }\n  },\n  \"required\": [\n    \"numero_factura\",\n    \"emisor\",\n    \"fecha_emision\",\n    \"moneda\",\n    \"items\",\n    \"total\"\n  ]\n}",
+        "options": {
+          "systemPromptTemplate": "Sos un extractor de datos de facturas. Sos una fotocopiadora, no un contador. Devolves unicamente lo que esta escrito en el documento, aunque este mal.\n\nREGLAS INNEGOCIABLES:\n1. NUNCA calcules un valor. Si el subtotal o el total no figuran, dejalos vacios.\n2. Si los numeros del documento NO CIERRAN entre si, copialos igual, tal como figuran. NO los corrijas, NO los ajustes, NO los recalcules. Un subtotal que no coincide con la suma de los items NO es un error de tipeo que tenes que arreglar: es EXACTAMENTE el dato que hay que detectar. Otro sistema, despues tuyo, compara lo declarado contra lo recalculado. Si vos lo arreglas antes, ese sistema no ve nada y el error queda invisible para siempre.\n3. Copia los numeros con los separadores del documento. Si dice 1.234,56, devolve \"1.234,56\". No los normalices.\n4. Incluí TODOS los items. Si la tabla sigue en la pagina siguiente, seguila.\n5. Si un campo no esta, omitilo. No lo inventes ni pongas un placeholder.\n\nAntes de responder, verifica una sola cosa: cada numero que vas a devolver, ¿esta escrito textualmente en el documento? Si no lo encontras escrito, no va."
+        }
+      }
+    },
+    {
+      "id": "n06",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        800,
+        400
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "{YOUR_OPENAI_CREDENTIAL_ID}",
+          "name": "{YOUR_OPENAI_CREDENTIAL_NAME}"
+        }
+      },
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list"
+        },
+        "builtInTools": {},
+        "options": {}
+      }
+    },
+    {
+      "id": "n07",
+      "name": "Validar — Aritmetica y campos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        180
+      ],
+      "parameters": {
+        "jsCode": "// ===========================================================================\n// Validacion aritmetica de la factura.\n// El template #6480 escribe en Sheets lo que sea que le devuelva el LLM.\n// Este nodo se para en el medio y pregunta: ¿los numeros cierran?\n// ===========================================================================\n\nconst TOLERANCIA = 0.01;  // un centavo. Mas que eso no es redondeo, es error.\n\n// Severidad por tipo de problema. 'alta' manda la factura a revision humana.\nconst SEVERIDAD = {\n  CAMPO_FALTANTE:     'alta',\n  SIN_ITEMS:          'alta',\n  ITEM_NO_CIERRA:     'alta',\n  SUBTOTAL_NO_CIERRA: 'alta',\n  TOTAL_NO_CIERRA:    'alta',\n  TOTAL_VS_ITEMS:     'alta',\n  TOTAL_NO_POSITIVO:  'alta',\n  IA_ALTERO_EL_DATO:  'alta',\n  ITEM_SIN_IMPORTE:   'media',\n  FECHA_INVALIDA:     'media',\n  FECHA_FUERA_RANGO:  'media',\n  MONEDA_DESCONOCIDA: 'media',\n};\n\nconst MONEDAS = ['ARS', 'USD', 'EUR', 'BRL', 'CLP', 'UYU', 'MXN', 'GBP', 'DKK'];\n\nconst r2 = (n) => Math.round(n * 100) / 100;\n\n// El LLM devuelve numeros en el formato del documento: 1.234,56 o 1,234.56.\n// Decidir cual es cual mirando que separador aparece ultimo.\nfunction num(v) {\n  if (v === null || v === undefined || v === '') return null;\n  if (typeof v === 'number') return isFinite(v) ? v : null;\n  let s = String(v).replace(/[^0-9.,-]/g, '').trim();\n  if (!s) return null;\n  const coma = s.lastIndexOf(',');\n  const punto = s.lastIndexOf('.');\n  if (coma > punto) s = s.replace(/\\./g, '').replace(',', '.');\n  else s = s.replace(/,/g, '');\n  const n = parseFloat(s);\n  return isFinite(n) ? n : null;\n}\n\n// DD/MM/YYYY, DD.MM.YYYY, YYYY-MM-DD. Todas aparecen en las facturas reales.\nfunction fecha(v) {\n  const s = String(v ?? '').trim();\n  let m;\n  if ((m = s.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/))) return new Date(+m[1], +m[2] - 1, +m[3]);\n  if ((m = s.match(/^(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{4})$/))) return new Date(+m[3], +m[2] - 1, +m[1]);\n  const d = new Date(s);\n  return isNaN(d.getTime()) ? null : d;\n}\n\n// El Information Extractor devuelve SOLO los campos del schema: el nombre del\n// archivo se pierde en el camino. Hay que ir a buscarlo al trigger.\n// itemMatching sigue la trazabilidad del item aunque el IF haya partido el\n// flujo; el acceso por indice cubre el caso de una sola factura por corrida,\n// que es como se graba el episodio.\nfunction nombreArchivo(indice) {\n  try { return $('Drive — Nueva factura').itemMatching(indice).json.name; } catch (e) {}\n  try { return $('Drive — Nueva factura').all()[indice].json.name; } catch (e) {}\n  return '(sin nombre)';\n}\n\n// ===========================================================================\n// AUDITORIA DE LA EXTRACCION — por que existe este bloque\n//\n// En la factura 06 el PDF declara \"Subtotal 702.000,00 / IVA 147.420,00 /\n// TOTAL 849.420,00\". gpt-4o-mini vio que los items sumaban 720.000, dedujo que\n// el subtotal estaba mal tipeado y devolvio 720.000 / 151.200 / 871.200:\n// reparo el documento en transito. El validador solo veia la salida del\n// modelo, recibio una factura internamente coherente, no tuvo contra que\n// comparar y la marco OK. Cero problemas, cero alerta.\n//\n// Endurecer el prompt NO alcanzo. Se le pidio explicitamente, en mayusculas y\n// con la razon, que no corrigiera, y volvio a corregir. Un prompt es una\n// sugerencia, no un candado: si hace falta una garantia dura, tiene que estar\n// en codigo determinista.\n//\n// La unica fuente de verdad es el texto del PDF, que es lo que el modelo tuvo\n// enfrente. Se contrasta en dos capas:\n//   1. Recuperacion: se busca el monto real por su etiqueta y se usa ESE.\n//   2. Red de seguridad: si la etiqueta no se pudo leer, al menos se verifica\n//      que el numero del modelo figure en algun lado del documento.\n// La capa 2 no recupera el valor, pero marca la factura igual. Nunca quedamos\n// peor que antes de auditar.\n// ===========================================================================\n\nfunction textoDelPdf(indice) {\n  try { return String($('PDF — Extraer texto').itemMatching(indice).json.text ?? ''); } catch (e) {}\n  try { return String($('PDF — Extraer texto').all()[indice].json.text ?? ''); } catch (e) {}\n  return '';\n}\n\n// Una linea de totales es corta y termina en el importe, con o sin simbolo de\n// moneda detras. Los dos filtros importan: sin ellos, en la factura 02 la\n// etiqueta /vat/ engancha el pie legal \"...under Article 196 of Council\n// Directive 2006/112/EC\" y devuelve 112 como si fuera el IVA.\nconst LARGO_MAXIMO_LINEA = 60;\nconst IMPORTE_AL_FINAL = /(-?\\d[\\d.,]*)\\s*(?:[A-Z]{0,3}|[$€£])\\s*$/;\n\n// Se recorre linea por linea en vez de armar un regex unico porque las\n// facturas vienen en tres idiomas y con la etiqueta pegada o separada del\n// importe. Se toma la ULTIMA coincidencia porque el bloque de totales va al\n// pie del documento, mientras que el CUIT o el VAT number del emisor —que\n// tambien matchean la etiqueta— van en el encabezado.\nfunction montoTrasEtiqueta(texto, etiqueta, excluir) {\n  let encontrado = null;\n  for (const cruda of texto.split(/\\r?\\n/)) {\n    const linea = cruda.trim();\n    if (!linea || linea.length > LARGO_MAXIMO_LINEA) continue;\n    if (!etiqueta.test(linea)) continue;\n    if (excluir && excluir.test(linea)) continue;\n    const m = linea.match(IMPORTE_AL_FINAL);\n    if (!m) continue;\n    const v = num(m[1]);\n    if (v !== null) encontrado = v;\n  }\n  return encontrado;\n}\n\n// Todos los numeros que figuran en el documento. Sirve para preguntar \"¿este\n// valor esta escrito en algun lado del PDF?\" sin depender de etiquetas ni del\n// formato de separadores, que cambia entre las facturas ARS, USD y EUR.\nfunction numerosDelTexto(texto) {\n  const set = new Set();\n  for (const t of (texto.match(/-?\\d[\\d.,]*/g) || [])) {\n    const v = num(t);\n    if (v !== null) set.add(r2(v));\n  }\n  return set;\n}\n\nconst RE_SUBTOTAL    = /subtotal|zwischensumme|nettobetrag|importe neto|net total/i;\nconst RE_TOTAL       = /\\b(total|gesamtbetrag|rechnungsbetrag|amount due|importe total)\\b/i;\nconst RE_NO_SUBTOTAL = /subtotal|zwischensumme/i;\nconst RE_IMPUESTO    = /\\b(iva|vat|mwst|ust|impuesto|impuestos|tax)\\b/i;\n\nconst salida = [];\nconst entradas = $input.all();\n\nfor (let idx = 0; idx < entradas.length; idx++) {\n  const entrada = entradas[idx];\n  // El Information Extractor de n8n no devuelve los campos en la raiz: los\n  // anida bajo 'output'. Leyendo entrada.json directo, TODOS los campos dan\n  // undefined y el validador reporta como vacia una factura que se extrajo\n  // perfecto. Es el bug que llenaba la planilla de CAMPO_FALTANTE.\n  const bruto = entrada.json ?? {};\n  const f = (bruto.output && typeof bruto.output === 'object') ? bruto.output : bruto;\n  const problemas = [];\n  const avisar = (tipo, detalle, extra) => problemas.push(\n    Object.assign({ tipo, severidad: SEVERIDAD[tipo] ?? 'media', detalle }, extra || {})\n  );\n\n  // --- 1. Campos sin los cuales la factura no sirve para nada -------------\n  const requeridos = ['numero_factura', 'emisor', 'fecha_emision', 'moneda', 'total'];\n  for (const campo of requeridos) {\n    const v = f[campo];\n    if (v === null || v === undefined || String(v).trim() === '') {\n      avisar('CAMPO_FALTANTE', 'No se pudo extraer el campo \"' + campo + '\"', { campo });\n    }\n  }\n\n  // --- 2. ¿Los items suman lo que dice el subtotal? -----------------------\n  const items = Array.isArray(f.items) ? f.items : [];\n  if (items.length === 0) avisar('SIN_ITEMS', 'No se extrajo ningun item de detalle');\n\n  let sumaItems = 0;\n  items.forEach((it, i) => {\n    const importe = num(it.importe);\n    if (importe === null) {\n      avisar('ITEM_SIN_IMPORTE', 'Item ' + (i + 1) + ': importe ilegible');\n      return;\n    }\n    sumaItems += importe;\n\n    // Cada item tambien tiene que cerrar consigo mismo.\n    const cant = num(it.cantidad);\n    const unit = num(it.precio_unitario);\n    if (cant !== null && unit !== null) {\n      const esperado = r2(cant * unit);\n      if (Math.abs(esperado - importe) > TOLERANCIA) {\n        avisar('ITEM_NO_CIERRA',\n          'Item ' + (i + 1) + ': ' + cant + ' x ' + unit + ' = ' + esperado + ', pero declara ' + importe,\n          { diferencia: r2(importe - esperado) });\n      }\n    }\n  });\n  sumaItems = r2(sumaItems);\n\n  // --- 2b. Auditoria: contrastar lo extraido contra el texto del PDF ------\n  const textoPdf = textoDelPdf(idx);\n  const numerosPdf = textoPdf ? numerosDelTexto(textoPdf) : null;\n\n  // Devuelve el valor que hay que usar de aca en adelante: el del PDF si se\n  // pudo recuperar, el del modelo si no. Avisa cuando difieren.\n  const auditar = (campo, valorLLM, etiqueta, excluir) => {\n    if (!textoPdf || valorLLM === null) return valorLLM;\n    const valorPdf = montoTrasEtiqueta(textoPdf, etiqueta, excluir);\n    if (valorPdf !== null) {\n      if (Math.abs(valorPdf - valorLLM) > TOLERANCIA) {\n        avisar('IA_ALTERO_EL_DATO',\n          'La IA devolvio ' + valorLLM + ' como ' + campo + ' pero el PDF dice ' + valorPdf +\n          '. Se usa el del PDF.',\n          { campo: campo, valor_ia: valorLLM, valor_pdf: valorPdf,\n            diferencia: r2(valorLLM - valorPdf) });\n      }\n      return valorPdf;\n    }\n    // Red de seguridad: la etiqueta no se pudo leer, pero el numero que\n    // devolvio el modelo no figura en ninguna parte del documento. No se puede\n    // recuperar el valor real; lo que no se puede es dejarla pasar como buena.\n    if (numerosPdf && !numerosPdf.has(r2(valorLLM))) {\n      avisar('IA_ALTERO_EL_DATO',\n        'La IA devolvio ' + valorLLM + ' como ' + campo + ' y ese numero no figura en el PDF.',\n        { campo: campo, valor_ia: valorLLM, valor_pdf: null });\n    }\n    return valorLLM;\n  };\n\n  // Los identificadores duros no se recalculan: se verifican por presencia\n  // literal. En una corrida real el modelo devolvio \"0004-00012847\" como\n  // numero de la factura 06 —que es el comprobante de la factura 01— mientras\n  // el PDF decia \"0003-00008816\". Ningun chequeo aritmetico agarra eso: los\n  // montos cerraban. Una factura imputada al comprobante equivocado se paga\n  // dos veces y la conciliacion nunca cierra.\n  const textoPlano = textoPdf.replace(/\\s+/g, '').toLowerCase();\n  if (textoPlano) {\n    for (const campo of ['numero_factura', 'cuit_emisor']) {\n      const valor = String(f[campo] ?? '').trim();\n      if (!valor) continue;\n      const aguja = valor.replace(/\\s+/g, '').toLowerCase();\n      if (aguja.length >= 4 && !textoPlano.includes(aguja)) {\n        avisar('IA_ALTERO_EL_DATO',\n          'La IA devolvio \"' + valor + '\" como ' + campo + ' y ese valor no figura en el PDF.',\n          { campo: campo, valor_ia: valor, valor_pdf: null });\n      }\n    }\n  }\n\n  const subtotal = auditar('subtotal', num(f.subtotal), RE_SUBTOTAL);\n  if (subtotal !== null && items.length > 0 && Math.abs(sumaItems - subtotal) > TOLERANCIA) {\n    avisar('SUBTOTAL_NO_CIERRA',\n      'Los items suman ' + sumaItems + ' pero la factura declara un subtotal de ' + subtotal,\n      { suma_items: sumaItems, subtotal_declarado: subtotal, diferencia: r2(sumaItems - subtotal) });\n  }\n\n  // --- 3. ¿subtotal + impuestos da el total? ------------------------------\n  const lineasImpuesto = (Array.isArray(f.impuestos) ? f.impuestos : [])\n    .map((t) => num(t && t.importe))\n    .filter((n) => n !== null);\n  let impuestos = r2(lineasImpuesto.reduce((a, b) => a + b, 0));\n  // Solo se audita contra el PDF cuando hay UNA sola linea de impuesto. Con\n  // varias (IVA + percepciones), la etiqueta devuelve una sola y compararla\n  // contra la suma daria un falso positivo.\n  if (lineasImpuesto.length === 1) {\n    impuestos = auditar('impuestos', impuestos, RE_IMPUESTO);\n  }\n  const total = auditar('total', num(f.total), RE_TOTAL, RE_NO_SUBTOTAL);\n  const base = subtotal !== null ? subtotal : sumaItems;\n\n  // Los impuestos declarados se liquidaron SOBRE EL SUBTOTAL DECLARADO. Si ese\n  // subtotal esta mal, arrastrarlos tal cual subestima el agujero: en la 06 da\n  // 18.000 cuando lo que realmente falta son 21.780. Hay que reliquidarlos\n  // sobre la suma real de los items.\n  //\n  // La alicuota sale de los propios numeros del documento (impuestos/subtotal),\n  // NO de parsear \"IVA 21%\" del texto. Parsear el string es fragil: se rompe\n  // con otras alicuotas, con percepciones sumadas y con los idiomas del resto\n  // de las facturas. La razon declarada funciona en todos esos casos, y en una\n  // factura sin impuestos da 0, que es lo correcto.\n  let impuestosReales = impuestos;\n  if (items.length > 0 && subtotal !== null && Math.abs(subtotal) > TOLERANCIA) {\n    impuestosReales = r2(sumaItems * (impuestos / subtotal));\n  }\n  const totalRecalculado = items.length > 0 ? r2(sumaItems + impuestosReales) : null;\n\n  if (total !== null) {\n    // 3a. Coherencia interna del documento.\n    const esperado = r2(base + impuestos);\n    if (Math.abs(esperado - total) > TOLERANCIA) {\n      avisar('TOTAL_NO_CIERRA',\n        base + ' + ' + r2(impuestos) + ' de impuestos = ' + esperado + ', pero el total dice ' + total,\n        { total_declarado: total, total_calculado: esperado, diferencia: r2(total - esperado) });\n    }\n    // 3b. El chequeo que realmente importa: recalcular DESDE LOS ITEMS.\n    //     Si el subtotal viene mal tipeado, 3a pasa igual porque el IVA y el\n    //     total se calcularon sobre el subtotal equivocado. Solo re-sumando\n    //     los items se ve el agujero.\n    if (totalRecalculado !== null && Math.abs(totalRecalculado - total) > TOLERANCIA) {\n      avisar('TOTAL_VS_ITEMS',\n        'Reliquidado desde los items el total seria ' + totalRecalculado + ', la factura dice ' + total,\n        { total_declarado: total, total_recalculado: totalRecalculado,\n          diferencia: r2(total - totalRecalculado) });\n    }\n    if (total <= 0) avisar('TOTAL_NO_POSITIVO', 'El total es ' + total);\n  }\n\n  // --- 4. Sanidad de fecha y moneda ---------------------------------------\n  const emision = fecha(f.fecha_emision);\n  if (f.fecha_emision && emision === null) {\n    avisar('FECHA_INVALIDA', 'No se pudo interpretar la fecha \"' + f.fecha_emision + '\"');\n  } else if (emision) {\n    const hoy = new Date();\n    const dias = (hoy - emision) / 86400000;\n    if (dias < -1) avisar('FECHA_FUERA_RANGO', 'La fecha de emision esta en el futuro');\n    else if (dias > 730) avisar('FECHA_FUERA_RANGO', 'La factura tiene mas de 2 años');\n  }\n\n  const moneda = String(f.moneda ?? '').trim().toUpperCase();\n  if (moneda && !MONEDAS.includes(moneda)) {\n    avisar('MONEDA_DESCONOCIDA', 'Moneda no reconocida: \"' + moneda + '\"');\n  }\n\n  // --- 5. Veredicto -------------------------------------------------------\n  const hayGraves = problemas.some((p) => p.severidad === 'alta');\n  const estado = problemas.length === 0 ? 'OK' : (hayGraves ? 'REVISAR' : 'ADVERTENCIA');\n\n  salida.push({\n    json: {\n      archivo: nombreArchivo(idx),\n      numero_factura: f.numero_factura ?? null,\n      emisor: f.emisor ?? null,\n      cuit_emisor: f.cuit_emisor ?? null,\n      fecha_emision: f.fecha_emision ?? null,\n      fecha_vencimiento: f.fecha_vencimiento ?? null,\n      moneda: moneda || null,\n      cantidad_items: items.length,\n      suma_items: sumaItems,\n      subtotal_declarado: subtotal,\n      impuestos_total: r2(impuestos),\n      // Se expone reliquidado adems de declarado para que la planilla cierre\n      // sola en pantalla: suma_items + impuestos_recalculado = total_recalculado,\n      // igual que subtotal_declarado + impuestos_total = total_declarado.\n      // Sin esta columna, hacer la cuenta en camara desde la planilla no da.\n      impuestos_recalculado: items.length > 0 ? impuestosReales : null,\n      total_declarado: total,\n      total_recalculado: totalRecalculado,\n      estado: estado,\n      requiere_revision: estado !== 'OK',\n      cantidad_problemas: problemas.length,\n      problemas: problemas,\n      resumen_problemas: problemas.map((p) => p.tipo).join(', ') || 'ninguno',\n      procesado_en: new Date().toISOString(),\n      items: items,\n    },\n  });\n}\n\nreturn salida;"
+      }
+    },
+    {
+      "id": "n08",
+      "name": "Marcar — Sin capa de texto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        560
+      ],
+      "parameters": {
+        "jsCode": "// ===========================================================================\n// El PDF no trae capa de texto: es un escaneo.\n// El template original manda igual el string vacio al LLM, que inventa algo o\n// devuelve nulls, y eso termina en la planilla como si fuera un dato.\n// Aca se corta antes y se marca para revision.\n// ===========================================================================\n\nfunction nombreArchivo(indice) {\n  try { return $('Drive — Nueva factura').itemMatching(indice).json.name; } catch (e) {}\n  try { return $('Drive — Nueva factura').all()[indice].json.name; } catch (e) {}\n  return '(sin nombre)';\n}\n\nconst salida = [];\nconst entradas = $input.all();\n\nfor (let idx = 0; idx < entradas.length; idx++) {\n  const entrada = entradas[idx];\n  const largo = String(entrada.json.text ?? '').trim().length;\n\n  salida.push({\n    json: {\n      archivo: nombreArchivo(idx),\n      numero_factura: null,\n      emisor: null,\n      cuit_emisor: null,\n      fecha_emision: null,\n      fecha_vencimiento: null,\n      moneda: null,\n      cantidad_items: 0,\n      suma_items: null,\n      subtotal_declarado: null,\n      impuestos_total: null,\n      impuestos_recalculado: null,\n      total_declarado: null,\n      total_recalculado: null,\n      estado: 'REVISAR',\n      requiere_revision: true,\n      cantidad_problemas: 1,\n      problemas: [{\n        tipo: 'SIN_CAPA_DE_TEXTO',\n        severidad: 'alta',\n        detalle: 'El PDF no tiene texto extraible (' + largo + ' caracteres). ' +\n                 'Es un escaneo: hace falta OCR antes de poder leerlo.',\n      }],\n      resumen_problemas: 'SIN_CAPA_DE_TEXTO',\n      procesado_en: new Date().toISOString(),\n      items: [],\n    },\n  });\n}\n\nreturn salida;"
+      }
+    },
+    {
+      "id": "n09",
+      "name": "Sheets — Registrar factura",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1280,
+        340
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "{YOUR_GOOGLE_SHEETS_CREDENTIAL_ID}",
+          "name": "{YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME}"
+        }
+      },
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "{YOUR_SPREADSHEET_ID}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "EP4_FACTURAS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {
+            "procesado_en": "={{ $json.procesado_en }}",
+            "archivo": "={{ $json.archivo }}",
+            "numero_factura": "={{ $json.numero_factura }}",
+            "emisor": "={{ $json.emisor }}",
+            "cuit_emisor": "={{ $json.cuit_emisor }}",
+            "fecha_emision": "={{ $json.fecha_emision }}",
+            "fecha_vencimiento": "={{ $json.fecha_vencimiento }}",
+            "moneda": "={{ $json.moneda }}",
+            "cantidad_items": "={{ $json.cantidad_items }}",
+            "suma_items": "={{ $json.suma_items }}",
+            "subtotal_declarado": "={{ $json.subtotal_declarado }}",
+            "impuestos_total": "={{ $json.impuestos_total }}",
+            "impuestos_recalculado": "={{ $json.impuestos_recalculado }}",
+            "total_declarado": "={{ $json.total_declarado }}",
+            "total_recalculado": "={{ $json.total_recalculado }}",
+            "estado": "={{ $json.estado }}",
+            "cantidad_problemas": "={{ $json.cantidad_problemas }}",
+            "problemas": "={{ $json.resumen_problemas }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n14",
+      "name": "Detalle — Una fila por item",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        720
+      ],
+      "parameters": {
+        "jsCode": "// ===========================================================================\n// Explota la factura en una fila por item para la pestaña de detalle.\n//\n// La cabecera (EP4_FACTURAS) responde \"¿esta factura cierra?\".\n// El detalle  (EP4_ITEMS)    responde \"¿que se compro y a que precio?\".\n//\n// Ademas recalcula cada linea: cantidad x precio_unitario contra el importe\n// declarado. En la factura 06 cada linea cierra perfecto y aun asi la factura\n// esta mal, y eso se ve sumando la columna importe_declarado: da 720.000\n// cuando la cabecera declara un subtotal de 702.000.\n// ===========================================================================\n\nconst TOLERANCIA = 0.01;\nconst r2 = (n) => Math.round(n * 100) / 100;\n\nfunction num(v) {\n  if (v === null || v === undefined || v === '') return null;\n  if (typeof v === 'number') return isFinite(v) ? v : null;\n  let s = String(v).replace(/[^0-9.,-]/g, '').trim();\n  if (!s) return null;\n  const coma = s.lastIndexOf(',');\n  const punto = s.lastIndexOf('.');\n  if (coma > punto) s = s.replace(/\\./g, '').replace(',', '.');\n  else s = s.replace(/,/g, '');\n  const n = parseFloat(s);\n  return isFinite(n) ? n : null;\n}\n\nconst salida = [];\n\nfor (const entrada of $input.all()) {\n  const f = entrada.json ?? {};\n  const items = Array.isArray(f.items) ? f.items : [];\n\n  items.forEach((it, i) => {\n    const cant = num(it.cantidad);\n    const unit = num(it.precio_unitario);\n    const importe = num(it.importe);\n\n    const recalculado = (cant !== null && unit !== null) ? r2(cant * unit) : null;\n    const diferencia = (recalculado !== null && importe !== null)\n      ? r2(importe - recalculado)\n      : null;\n\n    let estadoItem = 'OK';\n    if (importe === null) estadoItem = 'SIN_IMPORTE';\n    else if (diferencia !== null && Math.abs(diferencia) > TOLERANCIA) estadoItem = 'NO_CIERRA';\n\n    salida.push({\n      json: {\n        procesado_en: f.procesado_en ?? null,\n        archivo: f.archivo ?? null,\n        numero_factura: f.numero_factura ?? null,\n        emisor: f.emisor ?? null,\n        moneda: f.moneda ?? null,\n        item_nro: i + 1,\n        descripcion: it.descripcion ?? null,\n        // cantidad y precio se guardan tal cual figuran en el documento.\n        // El numero limpio va en las columnas recalculadas.\n        cantidad: it.cantidad ?? null,\n        precio_unitario: it.precio_unitario ?? null,\n        importe_declarado: importe,\n        importe_recalculado: recalculado,\n        diferencia: diferencia,\n        estado_item: estadoItem,\n      },\n    });\n  });\n}\n\nreturn salida;"
+      }
+    },
+    {
+      "id": "n15",
+      "name": "Sheets — Registrar items",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1520,
+        720
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "{YOUR_GOOGLE_SHEETS_CREDENTIAL_ID}",
+          "name": "{YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME}"
+        }
+      },
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "{YOUR_SPREADSHEET_ID}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "EP4_ITEMS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {
+            "procesado_en": "={{ $json.procesado_en }}",
+            "archivo": "={{ $json.archivo }}",
+            "numero_factura": "={{ $json.numero_factura }}",
+            "emisor": "={{ $json.emisor }}",
+            "moneda": "={{ $json.moneda }}",
+            "item_nro": "={{ $json.item_nro }}",
+            "descripcion": "={{ $json.descripcion }}",
+            "cantidad": "={{ $json.cantidad }}",
+            "precio_unitario": "={{ $json.precio_unitario }}",
+            "importe_declarado": "={{ $json.importe_declarado }}",
+            "importe_recalculado": "={{ $json.importe_recalculado }}",
+            "diferencia": "={{ $json.diferencia }}",
+            "estado_item": "={{ $json.estado_item }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n10",
+      "name": "IF — ¿Requiere revision?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1500,
+        340
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c-requiere-revision",
+              "leftValue": "={{ $json.requiere_revision }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n11",
+      "name": "Alerta — Armar mensaje",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1720,
+        220
+      ],
+      "parameters": {
+        "jsCode": "// ===========================================================================\n// Arma el mensaje de Telegram. Una alerta que no dice QUE revisar y CUANTA\n// plata hay en juego no sirve: se ignora a la tercera vez.\n// ===========================================================================\n\nconst ICONO = { alta: '\\u274c', media: '\\u26a0\\ufe0f' };\nconst salida = [];\n\nfor (const entrada of $input.all()) {\n  const f = entrada.json;\n  const problemas = Array.isArray(f.problemas) ? f.problemas : [];\n\n  const plata = problemas\n    .map((p) => Math.abs(Number(p.diferencia) || 0))\n    .reduce((a, b) => Math.max(a, b), 0);\n\n  let msg = '\\ud83d\\udea8 *Factura para revisar*\\n';\n  msg += '\\u2500'.repeat(24) + '\\n';\n  msg += '\\ud83d\\udcc4 Archivo: `' + (f.archivo ?? 's/d') + '`\\n';\n  if (f.numero_factura) msg += '\\ud83e\\uddfe Comprobante: ' + f.numero_factura + '\\n';\n  if (f.emisor) msg += '\\ud83c\\udfe2 Emisor: ' + f.emisor + '\\n';\n  if (f.total_declarado !== null && f.total_declarado !== undefined) {\n    msg += '\\ud83d\\udcb0 Total declarado: ' + (f.moneda ?? '') + ' ' + f.total_declarado + '\\n';\n  }\n  msg += '\\n*Problemas detectados (' + problemas.length + '):*\\n';\n\n  for (const p of problemas) {\n    msg += (ICONO[p.severidad] ?? '\\u2022') + ' *' + p.tipo + '*\\n';\n    msg += '   ' + p.detalle + '\\n';\n  }\n\n  if (plata > 0) {\n    msg += '\\n\\ud83d\\udcb8 *Diferencia maxima: ' + (f.moneda ?? '') + ' ' + plata.toFixed(2) + '*\\n';\n  }\n\n  msg += '\\n\\u27a1\\ufe0f Se registro en la planilla con estado *' + f.estado + '*. ';\n  msg += 'No avanza a pago hasta que alguien la mire.';\n\n  salida.push({ json: { message: msg, archivo: f.archivo, estado: f.estado } });\n}\n\nreturn salida;"
+      }
+    },
+    {
+      "id": "n12",
+      "name": "Telegram — Avisar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1940,
+        220
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "{YOUR_TELEGRAM_CREDENTIAL_ID}",
+          "name": "{YOUR_TELEGRAM_CREDENTIAL_NAME}"
+        }
+      },
+      "parameters": {
+        "chatId": "{YOUR_TELEGRAM_CHAT_ID}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      }
+    },
+    {
+      "id": "n13",
+      "name": "Sin incidencias",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1720,
+        460
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "s1",
+      "name": "Nota s1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        60
+      ],
+      "parameters": {
+        "width": 720,
+        "height": 200,
+        "color": 4,
+        "content": "## 1. Esto es el template #6480 tal cual\n\nDrive detecta el archivo, lo baja, se extrae el texto.\nHasta aca no hay nada agregado. Funciona.\n\nEl problema empieza despues."
+      }
+    },
+    {
+      "id": "s2",
+      "name": "Nota s2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        460,
+        60
+      ],
+      "parameters": {
+        "width": 460,
+        "height": 200,
+        "color": 3,
+        "content": "## 2. Guarda: ¿el PDF tiene texto?\n\nEl template manda el string vacio al LLM igual.\nUn escaneo entra como factura vacia y nadie se entera.\n\n80 caracteres es el piso: menos que eso no es una factura."
+      }
+    },
+    {
+      "id": "s3",
+      "name": "Nota s3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        980,
+        60
+      ],
+      "parameters": {
+        "width": 460,
+        "height": 200,
+        "color": 7,
+        "content": "## 3. El nodo que falta\n\nRe-suma los items y los compara contra el subtotal\ny el total declarados.\n\nSin esto, una factura con el subtotal mal tipeado\nentra al sistema contable sin una sola alerta."
+      }
+    },
+    {
+      "id": "s4",
+      "name": "Nota s4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1460,
+        60
+      ],
+      "parameters": {
+        "width": 700,
+        "height": 200,
+        "color": 5,
+        "content": "## 4. La alerta\n\nTODO se registra en la planilla, tenga problemas o no:\nsin traza no hay auditoria.\n\nEl Telegram sale SOLO si hay algo para mirar, y dice\nque esta mal y cuanta plata hay en juego. Una alerta\nque no dice eso se ignora a la tercera vez."
+      }
+    }
+  ],
+  "connections": {
+    "Drive — Nueva factura": {
+      "main": [
+        [
+          {
+            "node": "Drive — Descargar PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive — Descargar PDF": {
+      "main": [
+        [
+          {
+            "node": "PDF — Extraer texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF — Extraer texto": {
+      "main": [
+        [
+          {
+            "node": "IF — ¿El PDF tiene texto?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF — ¿El PDF tiene texto?": {
+      "main": [
+        [
+          {
+            "node": "IA — Extraer datos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Marcar — Sin capa de texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "IA — Extraer datos",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA — Extraer datos": {
+      "main": [
+        [
+          {
+            "node": "Validar — Aritmetica y campos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar — Aritmetica y campos": {
+      "main": [
+        [
+          {
+            "node": "Sheets — Registrar factura",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Detalle — Una fila por item",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF — ¿Requiere revision?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar — Sin capa de texto": {
+      "main": [
+        [
+          {
+            "node": "Sheets — Registrar factura",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF — ¿Requiere revision?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detalle — Una fila por item": {
+      "main": [
+        [
+          {
+            "node": "Sheets — Registrar items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF — ¿Requiere revision?": {
+      "main": [
+        [
+          {
+            "node": "Alerta — Armar mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sin incidencias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alerta — Armar mensaje": {
+      "main": [
+        [
+          {
+            "node": "Telegram — Avisar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "executionTimeout": 3600,
+    "timezone": "UTC"
+  },
+  "active": false
+}
