@@ -101,7 +101,7 @@ Mismo Client ID y Client Secret — es una credencial separada en n8n porque el 
 6. En el campo **"API Key"**, pegá la clave que copiaste.
 7. Guardala como `OpenAI API`.
 
-> La API de OpenAI es paga por uso. El modelo configurado (`gpt-4o-mini`) es el más económico de la línea. Para uso de prueba con algunos PDFs, el costo es centavos de dólar. Si preferís no gastar nada, usá Ollama o Gemini (ver sección "Qué necesitás antes de empezar").
+> La API de OpenAI es paga por uso. El modelo configurado (`gpt-5-mini`) es el más económico de la línea. Para uso de prueba con algunos PDFs, el costo es centavos de dólar. Si preferís no gastar nada, usá Ollama o Gemini (ver sección "Qué necesitás antes de empezar").
 
 ---
 
