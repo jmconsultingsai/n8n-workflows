@@ -28,18 +28,20 @@ Every workflow ships as a pair: a **fully sanitized JSON** (no credentials, no p
 | EP03 | [Pipeline Completo](workflows/ep03-pipeline-completo/) | Full lead gen pipeline: cold email by sector + daily Telegram report + LinkedIn outreach reminders | Google Sheets, Gmail, Telegram | [Watch](https://www.youtube.com/@jmconsultingsai) |
 | EP03 | [CVR Scraper](workflows/ep03-pipeline-completo/scraper/) | Python scripts that scrape Denmark's public business registry (Datafordeler CVR GraphQL), enrich leads, and sync to Google Sheets. Adaptable to any country's registry via LLM. | Datafordeler API, Google Sheets | [Watch](https://www.youtube.com/@jmconsultingsai) |
 | EP04 | [Validación aritmética de facturas](workflows/ep04-facturas-validacion-aritmetica/) | Watches a Drive folder for PDFs, extracts invoice data with an LLM, re-adds every line item in deterministic code, audits extracted values against the raw PDF text, writes results to two Sheets tabs, and alerts via Telegram only when there are incidents. | Google Drive, Google Sheets, OpenAI, Telegram | [Watch](https://www.youtube.com/@jmconsultingsai) |
+| Deep dive | [Pseudonimización de PII](workflows/deepdive-pseudonimizacion/) | Hashes the structured contact field and scrubs emails, national IDs and phone numbers out of the free-text field before anything reaches an external LLM. The manual leads with the 5-step decision rule and states explicitly what the scrub does **not** cover — names and card last-4 still go through. | OpenAI | [Watch](https://www.youtube.com/@jmconsultingsai) |
 
 ## Repository structure
 
 ```
 workflows/
-└── ep{NN}-{workflow-name}/
+└── ep{NN}-{workflow-name}/        # or deepdive-{topic}/
     ├── workflow.json    # Sanitized n8n export — import this
     ├── MANUAL.md        # Credentials & setup guide, step by step
     └── assets/          # Screenshots (optional)
 ```
 
-Folder names match the episode number on the channel (`ep01-...`, `ep02-...`).
+Episode folders match the episode number on the channel (`ep01-...`, `ep02-...`).
+Deep dives are not numbered episodes — they go under `deepdive-{topic}/`.
 
 ## Security
 
